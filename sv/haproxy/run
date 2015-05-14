@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # runit haproxy
 #
@@ -7,14 +7,30 @@ PID_PATH=/var/run/haproxy.pid
 BIN_PATH=/usr/local/sbin/haproxy
 CFG_PATH=/usr/local/etc/haproxy/haproxy.cfg
 
-exec /bin/bash <<EOF
 $BIN_PATH -f $CFG_PATH -D -p $PID_PATH
 
-trap "$BIN_PATH -f $CFG_PATH -D -p $PID_PATH -sf \\\$(cat $PID_PATH)" SIGHUP
-trap "kill -TERM \\\$(cat $PID_PATH) && exit 0" SIGTERM SIGINT
+trap "$BIN_PATH -f $CFG_PATH -D -p $PID_PATH -sf \$(cat $PID_PATH)" SIGHUP
+trap "kill -TERM \$(cat $PID_PATH) && exit 0" SIGTERM SIGINT
 
-while true; do # Iterate to keep job running.
-  sleep 1 # Wake up to handle signals
-  kill -0 $(cat $PID_PATH) || exit 1 # exit if haproxy is totally done for
+# wait for initial process to start
+i=0
+INIT_WAIT=10
+while true; do
+  sleep 1
+  if [ -e $PID_PATH ]; then
+    kill -0 $(cat $PID_PATH) && break
+  fi
+  let "i += 1"
+  if [ $i -ge $INIT_WAIT ]; then
+    echo "HAProxy didn't start after $INIT_WAIT seconds, exiting"
+    exit 1
+  fi
 done
-EOF
+
+# spin to keep the job running
+while true; do
+  # Wake up to handle signals
+  sleep 1
+  # exit if haproxy is unexpectedly down
+  kill -0 $(cat $PID_PATH) || exit 1
+done
